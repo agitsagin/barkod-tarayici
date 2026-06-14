@@ -1,7 +1,7 @@
 export const config = { runtime: 'edge' };
 
-const KV_URL = process.env.KV_REST_API_URL;
-const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+const KV_URL = 'https://ready-hookworm-122164.upstash.io';
+const KV_TOKEN = 'gQAAAAAAAd00AAIgcDI5OWQ3OWYzNDdmM2E0OTk0OTY2NmM5ZTBiZjg0NWE4MQ';
 
 async function kvGet(key) {
   const res = await fetch(`${KV_URL}/get/${key}`, {
