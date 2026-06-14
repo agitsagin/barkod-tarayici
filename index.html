@@ -605,15 +605,15 @@
       document.getElementById('start-btn').style.display = 'none';
       document.getElementById('stop-btn').style.display = 'block';
 
-      // Try native BarcodeDetector API
+      // Try native BarcodeDetector API (Chrome Android)
       if ('BarcodeDetector' in window) {
         barcodeDetector = new BarcodeDetector({
           formats: ['ean_13','ean_8','code_128','code_39','qr_code','upc_a','upc_e','itf','data_matrix']
         });
         scanLoop = setInterval(detectBarcode, 300);
       } else {
-        // Fallback: ZXing via CDN
-        loadZXing();
+        // Safari iOS fallback — QuaggaJS
+        loadQuagga();
       }
     } catch (e) {
       showToast('Kamera erişimi reddedildi', 'error');
@@ -637,33 +637,39 @@
     } catch(e) {}
   }
 
-  function loadZXing() {
+  function loadQuagga() {
     const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.21.3/umd/index.min.js';
-    s.onload = startZXing;
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js';
+    s.onload = startQuagga;
     s.onerror = () => showToast('Tarayıcı yüklenemedi. Manuel girin.', 'error');
     document.head.appendChild(s);
   }
 
-  function startZXing() {
-    try {
-      const video = document.getElementById('video');
-      const hints = new Map();
-      const codeReader = new ZXing.BrowserMultiFormatReader(hints);
-      codeReader.decodeFromVideoElement(video, (result, err) => {
-        if (result) {
-          const code = result.getText();
-          const now = Date.now();
-          if (code !== lastScanned || now - lastScannedTime > 2000) {
-            lastScanned = code;
-            lastScannedTime = now;
-            onBarcodeDetected(code);
-          }
-        }
-      });
-    } catch(e) {
-      showToast('Tarayıcı başlatılamadı. Manuel girin.', 'error');
-    }
+  function startQuagga() {
+    const video = document.getElementById('video');
+    Quagga.init({
+      inputStream: {
+        type: 'LiveStream',
+        target: video.parentElement,
+        constraints: { facingMode: 'environment' }
+      },
+      decoder: {
+        readers: ['ean_reader','ean_8_reader','code_128_reader','code_39_reader','upc_reader','upc_e_reader','i2of5_reader']
+      },
+      locate: true
+    }, err => {
+      if (err) { showToast('Kamera başlatılamadı', 'error'); return; }
+      Quagga.start();
+    });
+
+    Quagga.onDetected(result => {
+      const code = result.codeResult.code;
+      const now = Date.now();
+      if (code !== lastScanned || now - lastScannedTime > 2000) {
+        lastScanned = code; lastScannedTime = now;
+        onBarcodeDetected(code);
+      }
+    });
   }
 
   function stopCamera() {
