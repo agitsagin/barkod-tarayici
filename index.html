@@ -521,7 +521,7 @@
 </main>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw-1fwh7kO0ilRU_EhdZoPF8ABCE8jJwFxIT_h1vb3Uk29Id5QEqZY7N62qf2Cz3RSkCQ/exec';
+  const API_URL = 'https://barkod-tarayici.vercel.app/api/barkod';
 
   // ---- State ----
   let entries = JSON.parse(localStorage.getItem('bc_entries') || '[]');
@@ -543,14 +543,15 @@
   window.addEventListener('online', () => { updateSyncBar('idle'); flushQueue(); });
   window.addEventListener('offline', () => updateSyncBar('error', 'Çevrimdışı — kayıtlar kuyruğa alınıyor'));
 
-  // ---- Google Sheets Sync ----
+  // ---- Vercel API Sync ----
   async function sendToSheets(entry) {
-    const res = await fetch(SCRIPT_URL, {
+    const res = await fetch(API_URL, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ barcode: entry.barcode, qty: entry.qty, time: entry.time, date: entry.date })
     });
     const json = await res.json();
-    if (!json.success) throw new Error('Sheets error');
+    if (!json.success) throw new Error('API hatası');
   }
 
   async function flushQueue() {
