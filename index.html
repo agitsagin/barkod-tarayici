@@ -646,40 +646,54 @@
     document.head.appendChild(s);
   }
 
-  function startQuagga() {
-    Quagga.init({
-      inputStream: {
-        type: 'LiveStream',
-        target: document.getElementById('video'),
-        constraints: { facingMode: 'environment', width: 1280, height: 720 }
-      },
-      decoder: {
-        readers: ['ean_reader','ean_8_reader','code_128_reader','code_39_reader','upc_reader','upc_e_reader']
-      },
-      locate: true,
-      numOfWorkers: 0
-    }, err => {
-      if (err) { showToast('Kamera başlatılamadı', 'error'); return; }
-      Quagga.start();
-    });
+  function loadQuagga() {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+    s.onload = startHtml5Qrcode;
+    s.onerror = () => showToast('Tarayıcı yüklenemedi. Manuel girin.', 'error');
+    document.head.appendChild(s);
+  }
 
-    Quagga.onDetected(result => {
-      const code = result.codeResult.code;
-      const confidence = result.codeResult.decodedCodes
-        .filter(x => x.error !== undefined)
-        .reduce((acc, x) => acc + x.error, 0);
-      if (confidence > 0.25) return; // düşük güven, atla
-      const now = Date.now();
-      if (code !== lastScanned || now - lastScannedTime > 2000) {
-        lastScanned = code; lastScannedTime = now;
-        onBarcodeDetected(code);
-      }
-    });
+  let html5QrScanner = null;
+
+  function startHtml5Qrcode() {
+    // Hide our video element, html5-qrcode creates its own
+    document.getElementById('video').style.display = 'none';
+    const container = document.getElementById('video-container');
+    container.style.display = 'block';
+
+    // Create a div for html5-qrcode inside video-container
+    let scanDiv = document.getElementById('html5qr-div');
+    if (!scanDiv) {
+      scanDiv = document.createElement('div');
+      scanDiv.id = 'html5qr-div';
+      scanDiv.style.cssText = 'width:100%;height:100%;';
+      container.insertBefore(scanDiv, container.firstChild);
+    }
+
+    html5QrScanner = new Html5Qrcode('html5qr-div');
+    html5QrScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 100 }, aspectRatio: 1.333 },
+      code => {
+        const now = Date.now();
+        if (code !== lastScanned || now - lastScannedTime > 2000) {
+          lastScanned = code; lastScannedTime = now;
+          onBarcodeDetected(code);
+        }
+      },
+      () => {}
+    ).catch(err => showToast('Kamera başlatılamadı', 'error'));
   }
 
   function stopCamera() {
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     if (scanLoop) { clearInterval(scanLoop); scanLoop = null; }
+    if (html5QrScanner) {
+      html5QrScanner.stop().catch(()=>{});
+      html5QrScanner = null;
+    }
+    document.getElementById('video').style.display = 'block';
     document.getElementById('video-container').style.display = 'none';
     document.getElementById('start-btn').style.display = 'flex';
     document.getElementById('stop-btn').style.display = 'none';
