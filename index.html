@@ -657,12 +657,10 @@
   let html5QrScanner = null;
 
   function startHtml5Qrcode() {
-    // Hide our video element, html5-qrcode creates its own
     document.getElementById('video').style.display = 'none';
     const container = document.getElementById('video-container');
     container.style.display = 'block';
 
-    // Create a div for html5-qrcode inside video-container
     let scanDiv = document.getElementById('html5qr-div');
     if (!scanDiv) {
       scanDiv = document.createElement('div');
@@ -674,7 +672,20 @@
     html5QrScanner = new Html5Qrcode('html5qr-div');
     html5QrScanner.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 100 }, aspectRatio: 1.333 },
+      {
+        fps: 15,
+        qrbox: { width: 280, height: 120 },
+        aspectRatio: 1.333,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ]
+      },
       code => {
         const now = Date.now();
         if (code !== lastScanned || now - lastScannedTime > 2000) {
