@@ -1,7 +1,5 @@
 {
-  "functions": {
-    "api/barkod.js": {
-      "runtime": "edge"
-    }
-  }
+  "rewrites": [
+    { "source": "/api/barkod", "destination": "/api/barkod.js" }
+  ]
 }
