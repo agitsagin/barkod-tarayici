@@ -647,63 +647,78 @@
   }
 
   function loadQuagga() {
+    // iOS Safari icin canvas + BarcodeDetector polyfill dene
+    startCanvasScan();
+  }
+
+  function startCanvasScan() {
+    const video = document.getElementById('video');
+    
+    // Create offscreen canvas for scanning
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    
+    function tick() {
+      if (!stream) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        
+        // Try BarcodeDetector if available (should work on iOS 17+)
+        if ('BarcodeDetector' in window) {
+          barcodeDetector.detect(canvas).then(results => {
+            if (results.length > 0) {
+              const code = results[0].rawValue;
+              const now = Date.now();
+              if (code !== lastScanned || now - lastScannedTime > 2000) {
+                lastScanned = code; lastScannedTime = now;
+                onBarcodeDetected(code);
+              }
+            }
+          }).catch(() => {});
+        }
+      }
+      scanLoop = requestAnimationFrame(tick);
+    }
+    
+    video.addEventListener('loadeddata', () => {
+      if ('BarcodeDetector' in window) {
+        barcodeDetector = new BarcodeDetector({
+          formats: ['ean_13','ean_8','code_128','code_39','upc_a','upc_e','qr_code']
+        });
+        tick();
+      } else {
+        // Fallback: ZXing
+        loadZXingFallback();
+      }
+    });
+  }
+
+  function loadZXingFallback() {
     const s = document.createElement('script');
-    s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
-    s.onload = startHtml5Qrcode;
+    s.src = 'https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js';
+    s.onload = () => {
+      const video = document.getElementById('video');
+      const codeReader = new ZXing.BrowserMultiFormatReader();
+      codeReader.decodeFromVideoElement(video, (result, err) => {
+        if (result) {
+          const code = result.getText();
+          const now = Date.now();
+          if (code !== lastScanned || now - lastScannedTime > 2000) {
+            lastScanned = code; lastScannedTime = now;
+            onBarcodeDetected(code);
+          }
+        }
+      });
+    };
     s.onerror = () => showToast('Tarayıcı yüklenemedi. Manuel girin.', 'error');
     document.head.appendChild(s);
   }
 
-  let html5QrScanner = null;
-
-  function startHtml5Qrcode() {
-    document.getElementById('video').style.display = 'none';
-    const container = document.getElementById('video-container');
-    container.style.display = 'block';
-
-    let scanDiv = document.getElementById('html5qr-div');
-    if (!scanDiv) {
-      scanDiv = document.createElement('div');
-      scanDiv.id = 'html5qr-div';
-      scanDiv.style.cssText = 'width:100%;height:100%;';
-      container.insertBefore(scanDiv, container.firstChild);
-    }
-
-    html5QrScanner = new Html5Qrcode('html5qr-div');
-    html5QrScanner.start(
-      { facingMode: 'environment' },
-      {
-        fps: 15,
-        qrbox: { width: 280, height: 120 },
-        aspectRatio: 1.333,
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.QR_CODE
-        ]
-      },
-      code => {
-        const now = Date.now();
-        if (code !== lastScanned || now - lastScannedTime > 2000) {
-          lastScanned = code; lastScannedTime = now;
-          onBarcodeDetected(code);
-        }
-      },
-      () => {}
-    ).catch(err => showToast('Kamera başlatılamadı', 'error'));
-  }
-
   function stopCamera() {
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-    if (scanLoop) { clearInterval(scanLoop); scanLoop = null; }
-    if (html5QrScanner) {
-      html5QrScanner.stop().catch(()=>{});
-      html5QrScanner = null;
-    }
+    if (scanLoop) { cancelAnimationFrame(scanLoop); scanLoop = null; }
     document.getElementById('video').style.display = 'block';
     document.getElementById('video-container').style.display = 'none';
     document.getElementById('start-btn').style.display = 'flex';
