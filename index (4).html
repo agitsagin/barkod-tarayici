@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Barkod Tarayıcı</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --card: #22263a;
+    --accent: #4f8ef7;
+    --accent2: #7c5cfc;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --text: #e8eaf0;
+    --muted: #8892a4;
+    --border: #2d3148;
+    --radius: 14px;
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 18px 20px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  header .logo {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  header span { font-size: 12px; color: var(--muted); display: block; }
+
+  .count-badge {
+    margin-left: auto;
+    background: var(--accent);
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+    min-width: 28px;
+    text-align: center;
+  }
+
+  /* Sync bar */
+  .sync-bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 12px; }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .sync-dot.synced { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .sync-dot.syncing { background: var(--yellow); animation: syncpulse 1s infinite; }
+  .sync-dot.error { background: var(--red); }
+  @keyframes syncpulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .sync-text { color: var(--muted); flex: 1; }
+  .sync-count { color: var(--yellow); font-weight: 600; font-size: 11px; }
+
+  /* Queue banner */
+  .queue-banner { background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.3); border-radius: 10px; padding: 10px 14px; font-size: 12px; color: var(--yellow); display: none; align-items: center; gap: 8px; }
+  .queue-banner.show { display: flex; }
+
+  main { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* Camera Section */
+  .cam-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  #video-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: #000;
+    display: none;
+  }
+
+  #video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+
+  .scan-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .scan-frame {
+    width: 65%;
+    aspect-ratio: 2.5/1;
+    border: 2.5px solid var(--accent);
+    border-radius: 10px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+    position: relative;
+  }
+
+  .scan-line {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scan 1.6s linear infinite;
+  }
+
+  @keyframes scan {
+    0% { top: 0; }
+    100% { top: 100%; }
+  }
+
+  .corner {
+    position: absolute;
+    width: 14px; height: 14px;
+    border-color: var(--accent);
+    border-style: solid;
+  }
+  .corner.tl { top: -3px; left: -3px; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+  .corner.tr { top: -3px; right: -3px; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+  .corner.bl { bottom: -3px; left: -3px; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+  .corner.br { bottom: -3px; right: -3px; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+
+  #start-btn {
+    width: 100%;
+    padding: 18px;
+    font-size: 15px;
+    font-weight: 600;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: opacity .15s;
+  }
+
+  #start-btn:active { opacity: .8; }
+
+  #stop-btn {
+    display: none;
+    width: 100%;
+    padding: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    color: var(--red);
+    cursor: pointer;
+    letter-spacing: .3px;
+  }
+
+  /* Manual / Result row */
+  .input-row {
+    display: flex;
+    gap: 8px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    flex-direction: column;
+  }
+
+  .scanned-barcode {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 1px;
+    min-height: 28px;
+    text-align: center;
+  }
+
+  .scanned-barcode.empty { color: var(--muted); font-size: 13px; font-weight: 400; }
+
+  .qty-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .qty-label { font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+  .qty-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .qty-ctrl button {
+    width: 38px; height: 38px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 20px;
+    cursor: pointer;
+    transition: background .1s;
+  }
+
+  .qty-ctrl button:active { background: var(--border); }
+
+  #qty-input {
+    width: 52px;
+    text-align: center;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 700;
+    outline: none;
+  }
+
+  #manual-barcode {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+  }
+
+  #manual-barcode:focus { border-color: var(--accent); }
+
+  #add-btn {
+    padding: 10px 16px;
+    background: var(--green);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity .15s;
+  }
+
+  #add-btn:active { opacity: .8; }
+
+  /* Flash feedback */
+  .flash {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 99;
+    opacity: 0;
+    background: rgba(79,142,247,0.18);
+    transition: opacity .1s;
+  }
+
+  .flash.show { opacity: 1; }
+
+  /* Table */
+  .table-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .table-header h2 { font-size: 14px; font-weight: 700; }
+
+  .tbl-actions { display: flex; gap: 8px; }
+
+  .btn-clear {
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color .15s, color .15s;
+  }
+
+  .btn-clear:hover { border-color: var(--red); color: var(--red); }
+
+  .btn-export {
+    padding: 6px 14px;
+    background: var(--green);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: opacity .15s;
+  }
+
+  .btn-export:active { opacity: .8; }
+
+  .table-wrap { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    background: var(--card);
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background .1s;
+  }
+
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--card); }
+
+  td { padding: 10px 12px; vertical-align: middle; }
+
+  .td-num { color: var(--muted); font-size: 11px; }
+  .td-code { font-family: monospace; font-weight: 600; color: var(--accent); letter-spacing: .5px; }
+  .td-qty { font-weight: 700; color: var(--green); }
+  .td-time { font-size: 11px; color: var(--muted); }
+
+  .td-del {
+    width: 32px;
+  }
+
+  .del-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    border-radius: 6px;
+    transition: color .1s, background .1s;
+    line-height: 1;
+  }
+
+  .del-btn:hover { color: var(--red); background: rgba(239,68,68,.12); }
+
+  .empty-state {
+    text-align: center;
+    padding: 36px 20px;
+    color: var(--muted);
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .empty-state .icon { font-size: 32px; opacity: .4; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 10px 18px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: transform .25s cubic-bezier(.34,1.56,.64,1), opacity .25s;
+    opacity: 0;
+    white-space: nowrap;
+    z-index: 100;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error { border-color: var(--red); color: var(--red); }
+</style>
+</head>
+<body>
+
+<div class="flash" id="flash"></div>
+<div class="toast" id="toast"></div>
+
+<header>
+  <div class="logo">📦</div>
+  <div>
+    <h1>Barkod Tarayıcı</h1>
+    <span>Kamera ile tara → Excel'e aktar</span>
+  </div>
+  <div class="count-badge" id="count-badge">0</div>
+</header>
+
+<!-- Sync Status Bar -->
+<div class="sync-bar">
+  <div class="sync-dot" id="sync-dot"></div>
+  <span class="sync-text" id="sync-text">Hazırlanıyor…</span>
+  <span class="sync-count" id="sync-count"></span>
+</div>
+
+<main>
+
+  <!-- Camera -->
+  <div class="cam-section">
+    <div id="video-container">
+      <video id="video" playsinline muted autoplay></video>
+      <div class="scan-overlay">
+        <div class="scan-frame">
+          <div class="scan-line"></div>
+          <div class="corner tl"></div>
+          <div class="corner tr"></div>
+          <div class="corner bl"></div>
+          <div class="corner br"></div>
+        </div>
+      </div>
+    </div>
+    <button id="start-btn" onclick="startCamera()">
+      <span>📷</span> Kamerayı Aç
+    </button>
+    <button id="stop-btn" onclick="stopCamera()">Kamerayı Kapat</button>
+  </div>
+
+  <!-- Barkod + Adet -->
+  <div class="input-row">
+    <div class="scanned-barcode empty" id="scanned-display">Barkod bekleniyor…</div>
+
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <input id="manual-barcode" type="text" placeholder="Manuel barkod gir…" inputmode="numeric"
+        onkeydown="if(event.key==='Enter') addEntry()">
+
+      <div class="qty-row" style="flex:1; justify-content:flex-end;">
+        <span class="qty-label">Adet:</span>
+        <div class="qty-ctrl">
+          <button onclick="changeQty(-1)">−</button>
+          <input id="qty-input" type="number" value="1" min="1" max="9999">
+          <button onclick="changeQty(1)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <button id="add-btn" onclick="addEntry()">✓ Ekle</button>
+  </div>
+
+  <!-- Offline Queue Banner -->
+  <div class="queue-banner" id="queue-banner">
+    ⚠️ <span id="queue-text">Bekleyen kayıtlar var</span>
+  </div>
+
+  <!-- Table -->
+  <div class="table-section">
+    <div class="table-header">
+      <h2>Kayıtlar</h2>
+      <div class="tbl-actions">
+        <button class="btn-clear" onclick="clearAll()">Temizle</button>
+        <button class="btn-export" onclick="exportExcel()">⬇ Excel</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="data-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Barkod</th>
+            <th>Adet</th>
+            <th>Saat</th>
+            <th>☁️</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="empty-state" id="empty-state">
+        <div class="icon">📋</div>
+        <div>Henüz kayıt yok</div>
+        <div style="font-size:11px; opacity:.6;">Barkod okutunca burada görünür</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw-1fwh7kO0ilRU_EhdZoPF8ABCE8jJwFxIT_h1vb3Uk29Id5QEqZY7N62qf2Cz3RSkCQ/exec';
+
+  // ---- State ----
+  let entries = JSON.parse(localStorage.getItem('bc_entries') || '[]');
+  let offlineQueue = JSON.parse(localStorage.getItem('bc_queue') || '[]');
+  let currentBarcode = '';
+  let stream = null;
+  let barcodeDetector = null;
+  let scanLoop = null;
+  let lastScanned = '';
+  let lastScannedTime = 0;
+
+  let isSyncing = false;
+
+  // ---- Init ----
+  renderTable();
+  updateSyncBar('idle');
+  flushQueue();
+  setInterval(flushQueue, 30000);
+  window.addEventListener('online', () => { updateSyncBar('idle'); flushQueue(); });
+  window.addEventListener('offline', () => updateSyncBar('error', 'Çevrimdışı — kayıtlar kuyruğa alınıyor'));
+
+  // ---- Google Sheets Sync ----
+  async function sendToSheets(entry) {
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ barcode: entry.barcode, qty: entry.qty, time: entry.time, date: entry.date })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error('Sheets error');
+  }
+
+  async function flushQueue() {
+    if (!offlineQueue.length || isSyncing || !navigator.onLine) return;
+    isSyncing = true;
+    updateSyncBar('syncing');
+    const toSend = [...offlineQueue];
+    const failed = [];
+    for (const entry of toSend) {
+      try { await sendToSheets(entry); }
+      catch(e) { failed.push(entry); }
+    }
+    offlineQueue = failed;
+    entries = entries.map(e => {
+      const sent = toSend.find(q => q.id === e.id) && !failed.find(f => f.id === e.id);
+      return sent ? { ...e, synced: true } : e;
+    });
+    save(); renderTable(); updateQueueBanner();
+    isSyncing = false;
+    updateSyncBar(failed.length ? 'error' : 'synced',
+      failed.length ? `${failed.length} kayıt gönderilemedi` : `${toSend.length - failed.length} kayıt gönderildi`);
+  }
+
+  function updateSyncBar(state, msg) {
+    const dot = document.getElementById('sync-dot');
+    const text = document.getElementById('sync-text');
+    const count = document.getElementById('sync-count');
+    dot.className = 'sync-dot';
+    if (state === 'synced') { dot.classList.add('synced'); text.textContent = msg || "Google Sheets'e yazıldı"; }
+    else if (state === 'syncing') { dot.classList.add('syncing'); text.textContent = 'Gönderiliyor…'; }
+    else if (state === 'error') { dot.classList.add('error'); text.textContent = msg || 'Bağlantı hatası'; }
+    else { if (navigator.onLine) dot.classList.add('synced'); text.textContent = navigator.onLine ? 'Google Sheets bağlı' : 'Çevrimdışı'; }
+    count.textContent = offlineQueue.length > 0 ? `${offlineQueue.length} bekliyor` : '';
+  }
+
+  function updateQueueBanner() {
+    const b = document.getElementById('queue-banner');
+    document.getElementById('queue-text').textContent = `${offlineQueue.length} kayıt internet bağlantısı bekleniyor`;
+    b.className = 'queue-banner' + (offlineQueue.length ? ' show' : '');
+  }
+
+  // ---- Camera ----
+  async function startCamera() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      const video = document.getElementById('video');
+      video.srcObject = stream;
+      document.getElementById('video-container').style.display = 'block';
+      document.getElementById('start-btn').style.display = 'none';
+      document.getElementById('stop-btn').style.display = 'block';
+
+      // Try native BarcodeDetector API
+      if ('BarcodeDetector' in window) {
+        barcodeDetector = new BarcodeDetector({
+          formats: ['ean_13','ean_8','code_128','code_39','qr_code','upc_a','upc_e','itf','data_matrix']
+        });
+        scanLoop = setInterval(detectBarcode, 300);
+      } else {
+        // Fallback: ZXing via CDN
+        loadZXing();
+      }
+    } catch (e) {
+      showToast('Kamera erişimi reddedildi', 'error');
+    }
+  }
+
+  async function detectBarcode() {
+    const video = document.getElementById('video');
+    if (!video.videoWidth) return;
+    try {
+      const results = await barcodeDetector.detect(video);
+      if (results.length > 0) {
+        const code = results[0].rawValue;
+        const now = Date.now();
+        if (code !== lastScanned || now - lastScannedTime > 2000) {
+          lastScanned = code;
+          lastScannedTime = now;
+          onBarcodeDetected(code);
+        }
+      }
+    } catch(e) {}
+  }
+
+  function loadZXing() {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.21.3/umd/index.min.js';
+    s.onload = startZXing;
+    s.onerror = () => showToast('Tarayıcı yüklenemedi. Manuel girin.', 'error');
+    document.head.appendChild(s);
+  }
+
+  function startZXing() {
+    try {
+      const video = document.getElementById('video');
+      const hints = new Map();
+      const codeReader = new ZXing.BrowserMultiFormatReader(hints);
+      codeReader.decodeFromVideoElement(video, (result, err) => {
+        if (result) {
+          const code = result.getText();
+          const now = Date.now();
+          if (code !== lastScanned || now - lastScannedTime > 2000) {
+            lastScanned = code;
+            lastScannedTime = now;
+            onBarcodeDetected(code);
+          }
+        }
+      });
+    } catch(e) {
+      showToast('Tarayıcı başlatılamadı. Manuel girin.', 'error');
+    }
+  }
+
+  function stopCamera() {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    if (scanLoop) { clearInterval(scanLoop); scanLoop = null; }
+    document.getElementById('video-container').style.display = 'none';
+    document.getElementById('start-btn').style.display = 'flex';
+    document.getElementById('stop-btn').style.display = 'none';
+  }
+
+  function onBarcodeDetected(code) {
+    currentBarcode = code;
+    const el = document.getElementById('scanned-display');
+    el.textContent = code;
+    el.classList.remove('empty');
+    document.getElementById('manual-barcode').value = '';
+    flashScreen();
+    vibrate();
+    // Auto-add with qty 1 on scan
+    addEntry(true);
+  }
+
+  function flashScreen() {
+    const f = document.getElementById('flash');
+    f.classList.add('show');
+    setTimeout(() => f.classList.remove('show'), 200);
+  }
+
+  function vibrate() {
+    if (navigator.vibrate) navigator.vibrate(80);
+  }
+
+  // ---- Quantity ----
+  function changeQty(delta) {
+    const inp = document.getElementById('qty-input');
+    let v = parseInt(inp.value) || 1;
+    v = Math.max(1, Math.min(9999, v + delta));
+    inp.value = v;
+  }
+
+  // ---- Add Entry ----
+  async function addEntry(fromScan = false) {
+    const manual = document.getElementById('manual-barcode').value.trim();
+    const barcode = fromScan ? currentBarcode : (manual || currentBarcode);
+    if (!barcode) { showToast('Önce barkod girin', 'error'); return; }
+    const qty = parseInt(document.getElementById('qty-input').value) || 1;
+    const now = new Date();
+    const time = now.toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    const date = now.toLocaleDateString('tr-TR');
+    const entry = { id: Date.now(), barcode, qty, time, date, synced: false };
+
+    entries.unshift(entry);
+    offlineQueue.push(entry);
+    save(); renderTable(); updateBadge(); updateQueueBanner();
+
+    // Reset UI
+    document.getElementById('qty-input').value = 1;
+    document.getElementById('manual-barcode').value = '';
+    if (!fromScan) {
+      currentBarcode = '';
+      document.getElementById('scanned-display').textContent = 'Barkod bekleniyor…';
+      document.getElementById('scanned-display').classList.add('empty');
+    }
+    showToast(`✓ ${barcode} kaydedildi`, 'success');
+
+    // Try to sync immediately
+    if (navigator.onLine) {
+      updateSyncBar('syncing');
+      try {
+        await sendToSheets(entry);
+        offlineQueue = offlineQueue.filter(q => q.id !== entry.id);
+        entries = entries.map(e => e.id === entry.id ? { ...e, synced: true } : e);
+        save(); renderTable(); updateQueueBanner();
+        updateSyncBar('synced', "Sheets'e yazıldı ✓");
+      } catch(e) {
+        updateSyncBar('error', "Sheets'e yazılamadı — kuyruğa alındı");
+      }
+    } else {
+      updateSyncBar('error', 'Çevrimdışı — kuyruğa alındı');
+    }
+  }
+
+  // ---- Table ----
+  function renderTable() {
+    const tbody = document.getElementById('tbody');
+    const empty = document.getElementById('empty-state');
+    if (entries.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'flex';
+      return;
+    }
+    empty.style.display = 'none';
+    tbody.innerHTML = entries.map((e, i) => `
+      <tr>
+        <td class="td-num">${entries.length - i}</td>
+        <td class="td-code">${e.barcode}</td>
+        <td class="td-qty">${e.qty}</td>
+        <td class="td-time">${e.time}</td>
+        <td style="text-align:center">${e.synced ? '☁️' : '⏳'}</td>
+        <td class="td-del"><button class="del-btn" onclick="deleteEntry(${e.id})">✕</button></td>
+      </tr>
+    `).join('');
+    updateBadge();
+  }
+
+  function deleteEntry(id) {
+    entries = entries.filter(e => e.id !== id);
+    offlineQueue = offlineQueue.filter(e => e.id !== id);
+    save();
+    renderTable();
+  }
+
+  function clearAll() {
+    if (entries.length === 0) return;
+    if (!confirm("Yerel kayıtlar silinecek (Sheets'teki veriler korunur). Emin misiniz?")) return;
+    entries = []; offlineQueue = [];
+    save();
+    renderTable();
+    showToast('Yerel kayıtlar temizlendi');
+  }
+
+  function updateBadge() {
+    document.getElementById('count-badge').textContent = entries.length;
+  }
+
+  // ---- Export Excel ----
+  function exportExcel() {
+    if (entries.length === 0) { showToast('Dışa aktarılacak kayıt yok', 'error'); return; }
+
+    const wb = XLSX.utils.book_new();
+    const data = [['#', 'Barkod', 'Adet', 'Saat', 'Tarih']];
+    entries.forEach((e, i) => {
+      data.push([entries.length - i, e.barcode, e.qty, e.time, e.date]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+
+    // Column widths
+    ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 8 }, { wch: 12 }, { wch: 12 }];
+
+    // Header style
+    const headerStyle = {
+      font: { bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '4F8EF7' } },
+      alignment: { horizontal: 'center' }
+    };
+
+    ['A1','B1','C1','D1','E1'].forEach(cell => {
+      if (ws[cell]) ws[cell].s = headerStyle;
+    });
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Barkodlar');
+
+    const now = new Date();
+    const fname = `barkodlar_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.xlsx`;
+    XLSX.writeFile(wb, fname);
+    showToast(`Excel indirildi (${entries.length} kayıt)`, 'success');
+  }
+
+  // ---- Persist ----
+  function save() {
+    try {
+      localStorage.setItem('bc_entries', JSON.stringify(entries));
+      localStorage.setItem('bc_queue', JSON.stringify(offlineQueue));
+    } catch(e) {}
+  }
+
+  // ---- Toast ----
+  function showToast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (type ? ' ' + type : '');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.className = 'toast'; }, 2200);
+  }
+</script>
+</body>
+</html>
